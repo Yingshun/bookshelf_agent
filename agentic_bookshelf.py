@@ -192,7 +192,10 @@ Answer only what is asked - be direct and focused."""
 
 def grade_documents(state: State) -> Literal["generate_answer", "rewrite_question"]:
     """Evaluate whether retrieved documents are relevant to the question"""
-    question = state["messages"][0].content
+    question = next(
+        m.content for m in reversed(state["messages"])
+        if isinstance(m, HumanMessage)
+    )
     retry_count = state.get("retry_count", 0)
 
     # Max retries to prevent infinite loops
@@ -237,7 +240,10 @@ Are these documents relevant to answering the question? Answer 'yes' or 'no'."""
 
 def rewrite_question(state: State) -> dict:
     """Reformulate the question for better retrieval"""
-    original_question = state["messages"][0].content
+    original_question = next(
+        m.content for m in reversed(state["messages"])
+        if isinstance(m, HumanMessage)
+    )
     retry_count = state.get("retry_count", 0)
 
     rewrite_prompt = f"""Rewrite the following question to be more specific and better suited for Linux documentation retrieval.
@@ -278,8 +284,12 @@ INSTRUCTIONS:
     # Store the interaction in Mem0
     user_id = state["mem0_user_id"]
     try:
+        current_question = next(
+            m.content for m in reversed(state["messages"])
+            if isinstance(m, HumanMessage)
+        )
         interaction = [
-            {"role": "user", "content": state["messages"][0].content},
+            {"role": "user", "content": current_question},
             {"role": "assistant", "content": response.content}
         ]
         mem0.add(interaction, user_id=user_id)

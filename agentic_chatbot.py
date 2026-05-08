@@ -8,7 +8,7 @@ warnings.filterwarnings('ignore', message='.*Qdrant client version.*')
 warnings.filterwarnings('ignore', message='.*Pydantic V1.*')
 
 import gradio as gr
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from agentic_bookshelf import compiled_graph
 from mem0 import Memory
 import os
@@ -80,8 +80,22 @@ def respond(message, history):
         except Exception as e:
             return f"Error retrieving memories: {e}"
 
+    MAX_HISTORY_TURNS = 10
+    messages = []
+    if history:
+        recent = history[-MAX_HISTORY_TURNS:]
+        for entry in recent:
+            if isinstance(entry, dict):
+                role = entry.get("role", "")
+                content = entry.get("content", "")
+                if role == "user":
+                    messages.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    messages.append(AIMessage(content=content))
+    messages.append(HumanMessage(content=user_input))
+
     state = {
-        "messages": [HumanMessage(content=user_input)],
+        "messages": messages,
         "mem0_user_id": user_id,
         "retry_count": 0
     }
