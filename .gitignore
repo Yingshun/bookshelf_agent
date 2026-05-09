@@ -1,0 +1,8 @@
+CLAUDE.md
+.env
+__pycache__/
+rag_data/
+bookshelf_data/
+mem0_data/
+*.png
+logs/

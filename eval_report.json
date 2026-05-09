@@ -1,0 +1,137 @@
+{
+  "timestamp": "2026-05-09T13:38:08.801407",
+  "config": {
+    "k": 5,
+    "num_test_cases": 5
+  },
+  "aggregate": {
+    "retrieval": {
+      "mean_precision_at_k": 0.2,
+      "mean_recall_at_k": 1.0,
+      "mrr": 0.9,
+      "hit_rate": 1.0
+    }
+  },
+  "per_question": [
+    {
+      "id": "tc_001",
+      "question": "What does the vg_check function do?",
+      "category": "api_lookup",
+      "retrieval": {
+        "retrieved_names": [
+          "virttest.staging.lv_utils.vg_check(vg_name)",
+          "virttest.utils_libguestfs.GuestfishPersistent().vgs()",
+          "virttest.staging.lv_utils.lv_check(vg_name, lv_name)",
+          "virttest.utils_libguestfs.GuestfishPersistent().vg_activate(activate, volgroups)",
+          "virttest.utils_libguestfs.GuestfishPersistent().vgs_full()"
+        ],
+        "expected_sources": [
+          "virttest.staging.lv_utils.vg_check(vg_name)"
+        ],
+        "relevant_retrieved": [
+          "virttest.staging.lv_utils.vg_check(vg_name)"
+        ],
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "hit_at_k": 1.0
+      }
+    },
+    {
+      "id": "tc_002",
+      "question": "How do I clean up a ramdisk volume group after a test error?",
+      "category": "api_lookup",
+      "retrieval": {
+        "retrieved_names": [
+          "virttest.staging.lv_utils.vg_ramdisk_cleanup(ramdisk_filename, vg_ramdisk_dir, vg_name, loop_device)",
+          "virttest.data_dir.clean_tmp_files()",
+          "virttest.lvm.EmulatedLVM().cleanup()",
+          "virttest.utils_test.RemoteDiskManager().remove_vg(vgname)",
+          "virttest.utils_libguestfs.GuestfishPersistent().pvremove(device)"
+        ],
+        "expected_sources": [
+          "virttest.staging.lv_utils.vg_ramdisk_cleanup(ramdisk_filename, vg_ramdisk_dir, vg_name, loop_device)"
+        ],
+        "relevant_retrieved": [
+          "virttest.staging.lv_utils.vg_ramdisk_cleanup(ramdisk_filename, vg_ramdisk_dir, vg_name, loop_device)"
+        ],
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "hit_at_k": 1.0
+      }
+    },
+    {
+      "id": "tc_003",
+      "question": "How do I remove EFI firmware and boot config from a VM OS XML?",
+      "category": "configuration",
+      "retrieval": {
+        "retrieved_names": [
+          "virttest.utils_libvirt.libvirt_bios.remove_bootconfig_items_from_vmos(osxml)",
+          "virttest.utils_test.update_boot_option(vm, args_removed='', args_added='', need_reboot=True, guest_arch_name='x86_64', serial_login=False)",
+          "virttest.utils_test.libvirt.change_boot_order(vm_name, device_tag, boot_order, index=0)",
+          "virttest.libvirt_vm.VM().set_root_serial_console(device, remove=False)",
+          "virttest.utils_libvirt.libvirt_pcicontr.get_free_root_ports(vmxml)"
+        ],
+        "expected_sources": [
+          "virttest.utils_libvirt.libvirt_bios.remove_bootconfig_items_from_vmos(osxml)"
+        ],
+        "relevant_retrieved": [
+          "virttest.utils_libvirt.libvirt_bios.remove_bootconfig_items_from_vmos(osxml)"
+        ],
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "hit_at_k": 1.0
+      }
+    },
+    {
+      "id": "tc_004",
+      "question": "How can I configure ulimit settings for virtualization testing?",
+      "category": "configuration",
+      "retrieval": {
+        "retrieved_names": [
+          "virttest.test_setup.os_posix.UlimitConfig()",
+          "virttest.test_setup.os_posix.UlimitConfig().setup()",
+          "virttest.test_setup.PciAssignable()",
+          "virttest.test_setup.os_posix.UlimitConfig().cleanup()",
+          "virttest.test_setup.PciAssignable().release_devs(**kwargs)"
+        ],
+        "expected_sources": [
+          "virttest.test_setup.os_posix.UlimitConfig()"
+        ],
+        "relevant_retrieved": [
+          "virttest.test_setup.os_posix.UlimitConfig()"
+        ],
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 1.0,
+        "hit_at_k": 1.0
+      }
+    },
+    {
+      "id": "tc_005",
+      "question": "How do I get the mapping between logical volumes and device mapper multipath devices?",
+      "category": "api_lookup",
+      "retrieval": {
+        "retrieved_names": [
+          "virttest.lvm.LogicalVolume().create()",
+          "virttest.staging.lv_utils.gen_lvmap_mpath(session=None)",
+          "virttest.utils_qemu.find_supported_devices(bin_path, pattern, category=None)",
+          "virttest.utils_qemu.get_devices_info(bin_path, category=None)",
+          "virttest.lvm.LVM().setup()"
+        ],
+        "expected_sources": [
+          "virttest.staging.lv_utils.gen_lvmap_mpath(session=None)"
+        ],
+        "relevant_retrieved": [
+          "virttest.staging.lv_utils.gen_lvmap_mpath(session=None)"
+        ],
+        "precision_at_k": 0.2,
+        "recall_at_k": 1.0,
+        "reciprocal_rank": 0.5,
+        "hit_at_k": 1.0
+      }
+    }
+  ]
+}

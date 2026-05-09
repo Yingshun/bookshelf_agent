@@ -23,9 +23,30 @@ from langchain.tools import tool
 from mem0 import Memory
 from pydantic import BaseModel, Field
 import os
+import time
 from dotenv import load_dotenv
+from logging_config import get_logger
+
+logger = get_logger("pipeline")
 
 load_dotenv()
+
+# ============================================================================
+# LANGFUSE TRACING (optional, enabled via ENABLE_TRACING=true)
+# ============================================================================
+
+langfuse_handler = None
+if os.environ.get("ENABLE_TRACING", "").lower() == "true":
+    try:
+        from langfuse.langchain import CallbackHandler
+        langfuse_handler = CallbackHandler()
+        logger.info("LangFuse tracing enabled")
+    except ImportError:
+        logger.warning("langfuse package not installed, tracing disabled")
+    except Exception as e:
+        logger.warning("LangFuse init failed: %s", e)
+
+langfuse_callbacks = [langfuse_handler] if langfuse_handler else []
 
 # ============================================================================
 # CONFIGURATION
@@ -103,24 +124,20 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 @tool
 def retrieve_documents(query: str) -> str:
     """Search the knowledge base for relevant Linux documentation and technical information."""
+    t0 = time.perf_counter()
     docs = retriever.invoke(query)
+    elapsed = time.perf_counter() - t0
 
-    print(f"  → Retrieved {len(docs)} documents for query: '{query[:50]}...'")
+    logger.info("Retrieved %d documents for query: '%s...'",
+                len(docs), query[:50],
+                extra={"extra": {"query": query[:80], "doc_count": len(docs), "latency_s": round(elapsed, 3)}})
 
-    # Print detailed info for each retrieved document
     for i, doc in enumerate(docs, 1):
-        print(f"\n     Document {i}:")
-        # Print metadata
-        for key, value in doc.metadata.items():
-            if key == 'source':
-                print(f"       {key}: {os.path.basename(value)}")
-            elif isinstance(value, (list, dict)):
-                print(f"       {key}: {str(value)[:100]}...")
-            else:
-                print(f"       {key}: {value}")
-        # Print content preview
+        source = doc.metadata.get("source", "unknown")
         content_preview = doc.page_content[:150].replace('\n', ' ')
-        print(f"       content: {content_preview}...")
+        logger.debug("Document %d: source=%s content=%s...",
+                      i, os.path.basename(source), content_preview,
+                      extra={"extra": {"doc_index": i, "source": source}})
 
     # Format with source metadata
     retrieved_content = ""
@@ -140,19 +157,25 @@ def get_user_context(state: State) -> dict:
     last_message = state["messages"][-1].content
 
     try:
+        t0 = time.perf_counter()
         memories = mem0.search(last_message, filters={"user_id": user_id})
+        elapsed = time.perf_counter() - t0
         memory_results = memories.get('results', [])
 
         if memory_results:
             context = "User's past interactions and preferences:\n"
             context += "\n".join([f"- {m['memory']}" for m in memory_results])
-            print(f"  → Found {len(memory_results)} relevant memories for {user_id}")
+            logger.info("Found %d relevant memories for %s",
+                         len(memory_results), user_id,
+                         extra={"extra": {"user_id": user_id, "memory_count": len(memory_results), "latency_s": round(elapsed, 3)}})
         else:
             context = "No previous conversation history found."
-            print(f"  → No memories found for {user_id}")
+            logger.info("No memories found for %s", user_id,
+                         extra={"extra": {"user_id": user_id, "latency_s": round(elapsed, 3)}})
 
     except Exception as e:
-        print(f"  ⚠ Mem0 error: {e}")
+        logger.warning("Mem0 search error", exc_info=True,
+                        extra={"extra": {"user_id": user_id}})
         context = "Memory retrieval unavailable."
 
     return {"user_context": context}
@@ -180,12 +203,13 @@ Respond directly WITHOUT the tool when:
 Answer only what is asked - be direct and focused."""
 
     messages = [SystemMessage(content=system_prompt)] + state["messages"]
+    t0 = time.perf_counter()
     response = llm.bind_tools([retrieve_documents]).invoke(messages)
+    elapsed = time.perf_counter() - t0
 
-    if hasattr(response, 'tool_calls') and response.tool_calls:
-        print("  → Agent decided to retrieve documents")
-    else:
-        print("  → Agent responding without retrieval")
+    decision = "retrieve" if (hasattr(response, 'tool_calls') and response.tool_calls) else "respond_directly"
+    logger.info("Agent routing decision: %s", decision,
+                 extra={"extra": {"decision": decision, "latency_s": round(elapsed, 3)}})
 
     return {"messages": [response]}
 
@@ -202,7 +226,8 @@ def grade_documents(state: State) -> Literal["generate_answer", "rewrite_questio
     MAX_RETRIES = 2
 
     if retry_count >= MAX_RETRIES:
-        print(f"  → Max retries ({MAX_RETRIES}) reached, proceeding with available docs")
+        logger.info("Max retries (%d) reached, proceeding with available docs",
+                      MAX_RETRIES, extra={"extra": {"retry_count": retry_count}})
         return "generate_answer"
 
     # Find the tool response in messages
@@ -213,10 +238,10 @@ def grade_documents(state: State) -> Literal["generate_answer", "rewrite_questio
             break
 
     if not tool_message:
-        print("  → No documents to grade, proceeding to answer")
+        logger.info("No documents to grade, proceeding to answer")
         return "generate_answer"
 
-    context = tool_message.content[:500]  # First 500 chars for grading
+    context = tool_message.content[:500]
 
     grading_prompt = f"""Grade the relevance of the retrieved context to the user's question.
 
@@ -228,13 +253,19 @@ Retrieved Context:
 Are these documents relevant to answering the question? Answer 'yes' or 'no'."""
 
     grader = llm.with_structured_output(GradeDocuments)
+    t0 = time.perf_counter()
     result = grader.invoke([{"role": "user", "content": grading_prompt}])
+    elapsed = time.perf_counter() - t0
 
-    if result.binary_score == "yes":
-        print("  ✓ Documents are relevant")
+    grade = result.binary_score
+    if grade == "yes":
+        logger.info("Documents graded: relevant",
+                      extra={"extra": {"grade": grade, "retry_count": retry_count, "latency_s": round(elapsed, 3)}})
         return "generate_answer"
     else:
-        print(f"  ✗ Documents not relevant, rewriting question (retry {retry_count + 1}/{MAX_RETRIES})")
+        logger.info("Documents graded: not relevant, rewriting (retry %d/%d)",
+                      retry_count + 1, MAX_RETRIES,
+                      extra={"extra": {"grade": grade, "retry_count": retry_count + 1, "latency_s": round(elapsed, 3)}})
         return "rewrite_question"
 
 
@@ -253,10 +284,13 @@ Original question: {original_question}
 
 Rewritten question:"""
 
+    t0 = time.perf_counter()
     response = llm.invoke([{"role": "user", "content": rewrite_prompt}])
+    elapsed = time.perf_counter() - t0
     rewritten = response.content
 
-    print(f"  → Rewritten: '{rewritten}'")
+    logger.info("Query rewritten: '%s'", rewritten,
+                 extra={"extra": {"original": original_question[:80], "rewritten": rewritten[:80], "latency_s": round(elapsed, 3)}})
     return {
         "messages": [HumanMessage(content=rewritten)],
         "retry_count": retry_count + 1
@@ -279,7 +313,12 @@ INSTRUCTIONS:
 - Do not make assumptions or add information not in the retrieved documents"""
 
     messages = [SystemMessage(content=system_prompt)] + state["messages"]
+    t0 = time.perf_counter()
     response = llm.invoke(messages)
+    elapsed = time.perf_counter() - t0
+
+    logger.info("Answer generated",
+                 extra={"extra": {"response_length": len(response.content), "latency_s": round(elapsed, 3)}})
 
     # Store the interaction in Mem0
     user_id = state["mem0_user_id"]
@@ -293,9 +332,11 @@ INSTRUCTIONS:
             {"role": "assistant", "content": response.content}
         ]
         mem0.add(interaction, user_id=user_id)
-        print(f"  ✓ Interaction stored in Mem0 for {user_id}")
+        logger.info("Interaction stored in Mem0 for %s", user_id,
+                      extra={"extra": {"user_id": user_id}})
     except Exception as e:
-        print(f"  ⚠ Failed to store in Mem0: {e}")
+        logger.warning("Failed to store in Mem0", exc_info=True,
+                        extra={"extra": {"user_id": user_id}})
 
     return {"messages": [response]}
 
@@ -351,9 +392,9 @@ compiled_graph = build_graph()
 
 def chat(user_input: str, user_id: str = "user1") -> str:
     """Run a single conversation turn"""
-    print(f"\n{'='*60}")
-    print(f"User ({user_id}): {user_input}")
-    print(f"{'='*60}\n")
+    t0 = time.perf_counter()
+    logger.info("Request started",
+                 extra={"extra": {"user_id": user_id, "input_length": len(user_input)}})
 
     state = {
         "messages": [HumanMessage(content=user_input)],
@@ -361,34 +402,31 @@ def chat(user_input: str, user_id: str = "user1") -> str:
         "retry_count": 0
     }
 
-    # Stream the graph execution
-    for event in compiled_graph.stream(state):
+    graph_config = {"callbacks": langfuse_callbacks} if langfuse_callbacks else {}
+
+    for event in compiled_graph.stream(state, config=graph_config):
         for node_name, node_output in event.items():
             if node_name != "__end__":
-                print(f"[{node_name}]")
+                logger.info("Node executed: %s", node_name)
 
-    # Get final response
-    final_state = compiled_graph.invoke(state)
+    final_state = compiled_graph.invoke(state, config=graph_config)
     response = final_state["messages"][-1].content
+    elapsed = time.perf_counter() - t0
 
-    print(f"\n{'='*60}")
-    print(f"Assistant: {response}")
-    print(f"{'='*60}\n")
+    logger.info("Request completed",
+                 extra={"extra": {"user_id": user_id, "total_latency_s": round(elapsed, 3), "response_length": len(response)}})
 
     return response
 
 
 if __name__ == "__main__":
-    # Draw graph visualization
     try:
         compiled_graph.get_graph().draw_png("agentic_bookshelf_graph.png")
-        print("Graph visualization saved to agentic_bookshelf_graph.png\n")
+        logger.info("Graph visualization saved to agentic_bookshelf_graph.png")
     except Exception as e:
-        print(f"Could not save graph visualization: {e}\n")
+        logger.warning("Could not save graph visualization: %s", e)
 
-    print("\n" + "="*60)
-    print("Agentic Linux Knowledge Assistant")
-    print("="*60)
+    logger.info("Agentic Linux Knowledge Assistant started")
     print("\nType 'quit', 'exit', or 'bye' to end")
     print("Type '/memory' to view conversation context\n")
 
@@ -402,11 +440,10 @@ if __name__ == "__main__":
                 continue
 
             if user_input.lower() in ['quit', 'exit', 'bye']:
-                print("\nGoodbye!\n")
+                logger.info("User exited")
                 break
 
             if user_input == '/memory':
-                # Show memory context
                 memories = mem0.search("", filters={"user_id": user_id})
                 memory_results = memories.get('results', [])
                 if memory_results:
@@ -418,10 +455,15 @@ if __name__ == "__main__":
                 print()
                 continue
 
-            chat(user_input, user_id)
+            response = chat(user_input, user_id)
+            print(f"\nAssistant: {response}\n")
 
         except KeyboardInterrupt:
-            print("\n\n👋 Goodbye!\n")
+            logger.info("User interrupted")
             break
         except Exception as e:
-            print(f"\nError: {e}\n")
+            logger.error("CLI error", exc_info=True)
+
+    if langfuse_handler:
+        langfuse_handler._langfuse_client.flush()
+        logger.info("LangFuse traces flushed")

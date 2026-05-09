@@ -1,0 +1,64 @@
+test_cases:
+
+  - id: tc_001
+    question: "What does the vg_check function do?"
+    expected_sources:
+      - "virttest.staging.lv_utils.vg_check(vg_name)"
+    expected_answer_keywords:
+      - "volume group"
+      - "exists"
+      - "vg_name"
+    reference_answer: "The vg_check function checks whether a provided volume group exists. It takes a vg_name parameter."
+    category: "api_lookup"
+
+  - id: tc_002
+    question: "How do I clean up a ramdisk volume group after a test error?"
+    expected_sources:
+      - "virttest.staging.lv_utils.vg_ramdisk_cleanup(ramdisk_filename, vg_ramdisk_dir, vg_name, loop_device)"
+    expected_answer_keywords:
+      - "vg_ramdisk_cleanup"
+      - "ramdisk_filename"
+      - "loop_device"
+      - "cleanup"
+    reference_answer: "Use the vg_ramdisk_cleanup function for inline cleanup in case of test error. It takes ramdisk_filename, vg_ramdisk_dir, vg_name, and loop_device as parameters."
+    category: "api_lookup"
+
+  - id: tc_003
+    question: "How do I remove EFI firmware and boot config from a VM OS XML?"
+    expected_sources:
+      - "virttest.utils_libvirt.libvirt_bios.remove_bootconfig_items_from_vmos(osxml)"
+    expected_answer_keywords:
+      - "remove_bootconfig_items_from_vmos"
+      - "efi"
+      - "firmware"
+      - "loader"
+      - "nvram"
+      - "osxml"
+    reference_answer: "Use remove_bootconfig_items_from_vmos(osxml) to remove EFI firmware attribute and loader/nvram elements. It takes a VMOSXML object and returns the updated object."
+    category: "configuration"
+
+  - id: tc_004
+    question: "How can I configure ulimit settings for virtualization testing?"
+    expected_sources:
+      - "virttest.test_setup.os_posix.UlimitConfig()"
+    expected_answer_keywords:
+      - "UlimitConfig"
+      - "ulimit"
+      - "core"
+      - "nofile"
+      - "memlock"
+    reference_answer: "Use the UlimitConfig class from virttest.test_setup.os_posix. It supports configuring vt_ulimit_core (max core file size), vt_ulimit_nofile (max open file descriptors), and vt_ulimit_memlock (max memory lock size)."
+    category: "configuration"
+
+  - id: tc_005
+    question: "How do I get the mapping between logical volumes and device mapper multipath devices?"
+    expected_sources:
+      - "virttest.staging.lv_utils.gen_lvmap_mpath(session=None)"
+    expected_answer_keywords:
+      - "gen_lvmap_mpath"
+      - "logical volume"
+      - "device mapper"
+      - "multipath"
+      - "session"
+    reference_answer: "Use gen_lvmap_mpath(session=None) to get the name mapping between logical volume and device mapper multipathed device. Pass a session for VM context, or use default for host. Returns None or a dict like {'lv_name': dm_name}."
+    category: "api_lookup"

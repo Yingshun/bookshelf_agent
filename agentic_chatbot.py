@@ -8,11 +8,15 @@ warnings.filterwarnings('ignore', message='.*Qdrant client version.*')
 warnings.filterwarnings('ignore', message='.*Pydantic V1.*')
 
 import gradio as gr
+import time
 from langchain_core.messages import HumanMessage, AIMessage
-from agentic_bookshelf import compiled_graph
+from agentic_bookshelf import compiled_graph, langfuse_callbacks, langfuse_handler
 from mem0 import Memory
 import os
 from dotenv import load_dotenv
+from logging_config import get_logger
+
+logger = get_logger("chatbot")
 
 load_dotenv()
 
@@ -100,22 +104,40 @@ def respond(message, history):
         "retry_count": 0
     }
 
+    t0 = time.perf_counter()
+    logger.info("Gradio request received",
+                 extra={"extra": {"user_id": user_id, "input_length": len(user_input),
+                                  "history_length": len(history) if history else 0}})
+
     response_text = ""
     try:
-        # Stream the graph execution
-        for event in compiled_graph.stream(state):
+        graph_config = {"callbacks": langfuse_callbacks} if langfuse_callbacks else {}
+        for event in compiled_graph.stream(state, config=graph_config):
             for value in event.values():
                 if value.get("messages"):
                     response_text = value["messages"][-1].content
                 if value.get("user_context"):
                     last_memory = value["user_context"]
 
+        elapsed = time.perf_counter() - t0
+
         if not response_text:
+            logger.warning("No response generated",
+                            extra={"extra": {"user_id": user_id, "latency_s": round(elapsed, 3)}})
             return "No response generated."
 
+        logger.info("Gradio response sent",
+                     extra={"extra": {"user_id": user_id, "latency_s": round(elapsed, 3),
+                                      "response_length": len(response_text)}})
+        if langfuse_handler:
+            langfuse_handler._langfuse_client.flush()
         return response_text
 
     except Exception as e:
+        elapsed = time.perf_counter() - t0
+        logger.error("Gradio request failed",
+                      exc_info=True,
+                      extra={"extra": {"user_id": user_id, "latency_s": round(elapsed, 3)}})
         return f"Error: {str(e)}"
 
 
@@ -151,10 +173,5 @@ with gr.Blocks(title="Agentic Linux Assistant") as demo:
     """)
 
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("Starting Agentic Linux Knowledge Assistant")
-    print("="*60 + "\n")
-    print("Server will be available at: http://localhost:7860")
-    print("Press Ctrl+C to stop\n")
-
+    logger.info("Starting Agentic Linux Knowledge Assistant on http://localhost:7860")
     demo.launch(server_name="0.0.0.0", share=False)
